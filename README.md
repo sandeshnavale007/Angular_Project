@@ -3,158 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Log Viewer</title>
+    <title>Open Search Logs UI</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             background-color: #f4f4f4;
         }
-        h1 {
-            text-align: center;
-            color: #333;
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         }
-        .search-container {
-            margin-bottom: 20px;
+        .search-bar {
             display: flex;
-            justify-content: center;
-            gap: 20px;
+            justify-content: space-between;
+            margin-bottom: 20px;
         }
-        .search-container input {
-            padding: 8px;
-            width: 200px;
-            font-size: 16px;
+        .search-bar input {
+            padding: 10px;
+            width: 30%;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .search-bar label {
+            display: flex;
+            align-items: center;
+        }
+        .search-bar button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .search-bar button:hover {
+            background-color: #0056b3;
+        }
+        .logs {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+        }
+        .log-entry {
+            background-color: #f9f9f9;
+            padding: 10px;
+            margin: 5px 0;
             border-radius: 4px;
             border: 1px solid #ddd;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
+        .log-entry p {
+            margin: 5px 0;
         }
-        table, th, td {
-            border: 1px solid #ddd;
-        }
-        th, td {
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #4CAF50;
-            color: white;
-        }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
-        .timestamp {
-            width: 150px;
-        }
-        .classname {
-            width: 200px;
-        }
-        .message {
-            width: 100%;
-        }
-        .highlight {
-            background-color: yellow;
+        .log-level {
             font-weight: bold;
-            cursor: pointer;
+        }
+        .log-level.INFO {
+            color: #28a745; /* Green */
+        }
+        .log-level.ERROR {
+            color: #dc3545; /* Red */
+        }
+        .log-level.WARNING {
+            color: #ffc107; /* Yellow */
+        }
+        .loading {
+            text-align: center;
+            padding: 10px;
+            color: #007bff;
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <div class="search-bar">
+            <div>
+                <label for="timestamp-search">Timestamp:</label>
+                <input type="text" id="timestamp-search" placeholder="Search by Timestamp">
+            </div>
+            <div>
+                <label for="level-search">Log Level:</label>
+                <input type="text" id="level-search" placeholder="Search by Log Level">
+            </div>
+            <div>
+                <label for="message-search">Message:</label>
+                <input type="text" id="message-search" placeholder="Search by Message">
+            </div>
+            <button onclick="searchLogs()">Search</button>
+        </div>
 
-<h1>Log Viewer</h1>
+        <div class="logs" id="logs">
+            <div id="loading" class="loading">Loading logs...</div>
+            <!-- Logs will be displayed here -->
+        </div>
+    </div>
 
-<div class="search-container">
-    <input type="text" id="search-timestamp" placeholder="Search by Timestamp" onkeyup="highlightAndScroll()">
-    <input type="text" id="search-classname" placeholder="Search by Class Name" onkeyup="highlightAndScroll()">
-    <input type="text" id="search-message" placeholder="Search by Message" onkeyup="highlightAndScroll()">
-</div>
+    <script>
+        const apiUrl = "https://example.com/api/logs"; // Replace with your API URL
 
-<table>
-    <thead>
-        <tr>
-            <th class="timestamp">Timestamp</th>
-            <th class="classname">Class Name</th>
-            <th class="message">Message</th>
-        </tr>
-    </thead>
-    <tbody id="log-table-body">
-        <!-- Log entries will be inserted here dynamically -->
-    </tbody>
-</table>
+        let allLogs = [];
 
-<script>
-// Function to highlight matching text in a string
-function highlightText(text, searchQuery) {
-    if (!searchQuery) return text; // Return the original text if there's no search query
+        // Function to fetch logs from the API
+        async function fetchLogs() {
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                allLogs = data.logs; // Assuming the API returns a 'logs' array
+                displayLogs(allLogs);
+            } catch (error) {
+                console.error('Error fetching logs:', error);
+                document.getElementById('loading').innerText = "Failed to load logs.";
+            }
+        }
 
-    const regex = new RegExp(`(${searchQuery})`, 'gi');
-    return text.replace(regex, '<span class="highlight">$1</span>');
-}
+        // Function to display logs in the UI
+        function displayLogs(logs) {
+            const logsContainer = document.getElementById('logs');
+            const loadingElement = document.getElementById('loading');
+            loadingElement.style.display = 'none';  // Hide loading message when logs are loaded
+            logsContainer.innerHTML = '';
 
-// Function to populate the table with logs
-function populateLogTable(logs) {
-    const tableBody = document.getElementById('log-table-body');
-    tableBody.innerHTML = ''; // Clear any existing rows
+            if (logs.length === 0) {
+                logsContainer.innerHTML = '<p>No logs found.</p>';
+                return;
+            }
 
-    logs.forEach(log => {
-        const row = document.createElement('tr');
-        
-        const timestampCell = document.createElement('td');
-        timestampCell.classList.add('timestamp');
-        timestampCell.innerHTML = highlightText(log.timestamp, document.getElementById('search-timestamp').value);
-        
-        const classNameCell = document.createElement('td');
-        classNameCell.classList.add('classname');
-        classNameCell.innerHTML = highlightText(log.className, document.getElementById('search-classname').value);
-        
-        const messageCell = document.createElement('td');
-        messageCell.classList.add('message');
-        messageCell.innerHTML = highlightText(log.message, document.getElementById('search-message').value);
-        
-        row.appendChild(timestampCell);
-        row.appendChild(classNameCell);
-        row.appendChild(messageCell);
-        
-        tableBody.appendChild(row);
-    });
-}
+            logs.forEach(log => {
+                const logElement = document.createElement('div');
+                logElement.classList.add('log-entry');
+                logElement.innerHTML = `
+                    <p><strong class="log-level ${log.logLevel}">${log.logLevel}</strong> - <span>${log.timestamp}</span></p>
+                    <p>${log.message}</p>
+                `;
+                logsContainer.appendChild(logElement);
+            });
+        }
 
-// Function to highlight text and scroll to the highlighted word
-function highlightAndScroll() {
-    populateLogTable(logs); // Re-populate the table with highlighted text
+        // Function to search logs based on multiple criteria (timestamp, logLevel, and message)
+        function searchLogs() {
+            const timestampQuery = document.getElementById('timestamp-search').value.toLowerCase();
+            const levelQuery = document.getElementById('level-search').value.toLowerCase();
+            const messageQuery = document.getElementById('message-search').value.toLowerCase();
 
-    // Scroll to the first highlighted element if it exists
-    const highlightedElements = document.querySelectorAll('.highlight');
-    if (highlightedElements.length > 0) {
-        highlightedElements[0].scrollIntoView({
-            behavior: 'smooth',
-            block: 'center'
-        });
-    }
-}
+            const filteredLogs = allLogs.filter(log => {
+                const matchesTimestamp = log.timestamp.toLowerCase().includes(timestampQuery);
+                const matchesLevel = log.logLevel.toLowerCase().includes(levelQuery);
+                const matchesMessage = log.message.toLowerCase().includes(messageQuery);
 
-// Fetch logs from an API
-async function fetchLogs() {
-    try {
-        const response = await fetch('https://your-api-endpoint.com/logs'); // Replace with your API URL
-        const data = await response.json();
-        logs = data; // Store the fetched data globally
-        populateLogTable(logs); // Populate the table with the fetched data
-    } catch (error) {
-        console.error('Error fetching log data:', error);
-    }
-}
+                return matchesTimestamp && matchesLevel && matchesMessage;
+            });
 
-// Initializing logs variable
-let logs = [];
+            displayLogs(filteredLogs);
+        }
 
-// Fetch logs on page load
-fetchLogs();
-</script>
-
+        // Fetch logs when the page loads
+        window.onload = fetchLogs;
+    </script>
 </body>
 </html>
