@@ -81,6 +81,20 @@
             width: 200px;
             margin-left: 10px;
         }
+
+        .column-search-container {
+            margin-bottom: 20px;
+        }
+
+        .column-search-container label {
+            margin-right: 10px;
+        }
+
+        .column-search-container input {
+            padding: 5px 10px;
+            margin-left: 10px;
+        }
+
     </style>
 </head>
 <body>
@@ -99,10 +113,16 @@
             </select>
         </div>
 
-        <!-- Search Option -->
-        <div class="search-container">
-            <label for="search-input">Search Logs:</label>
-            <input type="text" id="search-input" oninput="searchLogs()" placeholder="Search by timestamp, level, or message" />
+        <!-- Column-Wise Search Options -->
+        <div class="column-search-container">
+            <label for="search-timestamp">Search by Timestamp:</label>
+            <input type="text" id="search-timestamp" oninput="searchLogs()" placeholder="Search by timestamp" />
+            
+            <label for="search-level">Search by Log Level:</label>
+            <input type="text" id="search-level" oninput="searchLogs()" placeholder="Search by log level" />
+            
+            <label for="search-message">Search by Message:</label>
+            <input type="text" id="search-message" oninput="searchLogs()" placeholder="Search by message" />
         </div>
 
         <!-- Logs Table -->
@@ -121,7 +141,7 @@
 
         <!-- Pagination Controls -->
         <div class="pagination" id="pagination">
-            <!-- Pagination buttons will be added here -->
+            <!-- Next and Previous buttons will be added here -->
         </div>
     </div>
 
@@ -152,92 +172,4 @@
             }
         }
 
-        // Render the table with the current logs
-        function renderTable() {
-            const tableBody = document.querySelector('#logs-table tbody');
-            tableBody.innerHTML = '';
-
-            const startIdx = (currentPage - 1) * logsPerPage;
-            const endIdx = startIdx + logsPerPage;
-
-            const logsToDisplay = filteredLogs.slice(startIdx, endIdx);
-
-            logsToDisplay.forEach(log => {
-                const row = document.createElement('tr');
-                const timestampCell = document.createElement('td');
-                timestampCell.textContent = log.timestamp;
-                row.appendChild(timestampCell);
-
-                const logLevelCell = document.createElement('td');
-                logLevelCell.textContent = log.logLevel;
-                row.appendChild(logLevelCell);
-
-                const messageCell = document.createElement('td');
-                messageCell.textContent = log.message;
-                row.appendChild(messageCell);
-
-                tableBody.appendChild(row);
-            });
-        }
-
-        // Render pagination controls
-        function renderPagination() {
-            const paginationDiv = document.getElementById('pagination');
-            paginationDiv.innerHTML = '';
-
-            const totalPages = Math.ceil(filteredLogs.length / logsPerPage);
-
-            for (let i = 1; i <= totalPages; i++) {
-                const button = document.createElement('button');
-                button.textContent = i;
-                button.onclick = () => changePage(i);
-                if (i === currentPage) {
-                    button.disabled = true;
-                }
-                paginationDiv.appendChild(button);
-            }
-        }
-
-        // Change the current page
-        function changePage(pageNumber) {
-            currentPage = pageNumber;
-            renderTable();
-            renderPagination();
-        }
-
-        // Filter the logs by selected log level
-        function filterLogs() {
-            const selectedLogLevel = document.getElementById('log-level').value;
-
-            if (selectedLogLevel) {
-                filteredLogs = logs.filter(log => log.logLevel === selectedLogLevel);
-            } else {
-                filteredLogs = [...logs];
-            }
-
-            currentPage = 1; // Reset to first page after filtering
-            renderTable();
-            renderPagination();
-        }
-
-        // Search logs by timestamp, log level, or message
-        function searchLogs() {
-            const searchQuery = document.getElementById('search-input').value.toLowerCase();
-
-            filteredLogs = logs.filter(log => {
-                return log.timestamp.toLowerCase().includes(searchQuery) ||
-                       log.logLevel.toLowerCase().includes(searchQuery) ||
-                       log.message.toLowerCase().includes(searchQuery);
-            });
-
-            currentPage = 1; // Reset to first page after searching
-            renderTable();
-            renderPagination();
-        }
-
-        // Call fetchLogs when the page loads
-        window.onload = fetchLogs;
-    </script>
-
-</body>
-</html>
+        // Render the table
