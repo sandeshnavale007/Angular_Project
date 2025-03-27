@@ -172,4 +172,100 @@
             }
         }
 
-        // Render the table
+        // Render the table with the current logs
+        function renderTable() {
+            const tableBody = document.querySelector('#logs-table tbody');
+            tableBody.innerHTML = '';
+
+            const startIdx = (currentPage - 1) * logsPerPage;
+            const endIdx = startIdx + logsPerPage;
+
+            const logsToDisplay = filteredLogs.slice(startIdx, endIdx);
+
+            logsToDisplay.forEach(log => {
+                const row = document.createElement('tr');
+                const timestampCell = document.createElement('td');
+                timestampCell.textContent = log.timestamp;
+                row.appendChild(timestampCell);
+
+                const logLevelCell = document.createElement('td');
+                logLevelCell.textContent = log.logLevel;
+                row.appendChild(logLevelCell);
+
+                const messageCell = document.createElement('td');
+                messageCell.textContent = log.message;
+                row.appendChild(messageCell);
+
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Render pagination controls (with Next and Previous buttons)
+        function renderPagination() {
+            const paginationDiv = document.getElementById('pagination');
+            paginationDiv.innerHTML = '';
+
+            const totalPages = Math.ceil(filteredLogs.length / logsPerPage);
+
+            // Show "Previous" button only if we're not on the first page
+            if (currentPage > 1) {
+                const prevButton = document.createElement('button');
+                prevButton.textContent = 'Previous';
+                prevButton.onclick = () => changePage(currentPage - 1);
+                paginationDiv.appendChild(prevButton);
+            }
+
+            // Show "Next" button only if we're not on the last page
+            if (currentPage < totalPages) {
+                const nextButton = document.createElement('button');
+                nextButton.textContent = 'Next';
+                nextButton.onclick = () => changePage(currentPage + 1);
+                paginationDiv.appendChild(nextButton);
+            }
+        }
+
+        // Change the current page
+        function changePage(pageNumber) {
+            currentPage = pageNumber;
+            renderTable();
+            renderPagination();
+        }
+
+        // Filter the logs by selected log level
+        function filterLogs() {
+            const selectedLogLevel = document.getElementById('log-level').value;
+
+            if (selectedLogLevel) {
+                filteredLogs = logs.filter(log => log.logLevel === selectedLogLevel);
+            } else {
+                filteredLogs = [...logs];
+            }
+
+            currentPage = 1; // Reset to first page after filtering
+            renderTable();
+            renderPagination();
+        }
+
+        // Search logs by timestamp, log level, or message
+        function searchLogs() {
+            const searchTimestamp = document.getElementById('search-timestamp').value.toLowerCase();
+            const searchLevel = document.getElementById('search-level').value.toLowerCase();
+            const searchMessage = document.getElementById('search-message').value.toLowerCase();
+
+            filteredLogs = logs.filter(log => {
+                return log.timestamp.toLowerCase().includes(searchTimestamp) &&
+                       log.logLevel.toLowerCase().includes(searchLevel) &&
+                       log.message.toLowerCase().includes(searchMessage);
+            });
+
+            currentPage = 1; // Reset to first page after searching
+            renderTable();
+            renderPagination();
+        }
+
+        // Call fetchLogs when the page loads
+        window.onload = fetchLogs;
+    </script>
+
+</body>
+</html>
