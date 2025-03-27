@@ -3,168 +3,241 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Open Search Logs UI</title>
+    <title>Logs Table</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f4;
+            margin: 20px;
+            background-color: #f4f4f9;
         }
-        .container {
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
-        .search-bar {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
         }
-        .search-bar input {
-            padding: 10px;
-            width: 30%;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        .search-bar label {
-            display: flex;
-            align-items: center;
-        }
-        .search-bar button {
-            padding: 10px 20px;
+
+        th {
             background-color: #007bff;
             color: white;
-            border: none;
-            border-radius: 4px;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .pagination button {
+            padding: 5px 10px;
+            margin: 0 2px;
             cursor: pointer;
-        }
-        .search-bar button:hover {
-            background-color: #0056b3;
-        }
-        .logs {
-            margin-top: 20px;
-            max-height: 300px;
-            overflow-y: auto;
-            border-top: 1px solid #ddd;
-            padding-top: 10px;
-        }
-        .log-entry {
-            background-color: #f9f9f9;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 4px;
             border: 1px solid #ddd;
+            background-color: #f9f9f9;
         }
-        .log-entry p {
-            margin: 5px 0;
+
+        .pagination button:hover {
+            background-color: #ddd;
         }
-        .log-level {
-            font-weight: bold;
+
+        .filter-container {
+            margin-bottom: 20px;
         }
-        .log-level.INFO {
-            color: #28a745; /* Green */
+
+        .filter-container label {
+            margin-right: 10px;
         }
-        .log-level.ERROR {
-            color: #dc3545; /* Red */
+
+        .filter-container select {
+            padding: 5px;
         }
-        .log-level.WARNING {
-            color: #ffc107; /* Yellow */
+
+        .search-container {
+            margin-bottom: 20px;
         }
-        .loading {
-            text-align: center;
-            padding: 10px;
-            color: #007bff;
+
+        .search-container input {
+            padding: 5px 10px;
+            width: 200px;
+            margin-left: 10px;
         }
     </style>
 </head>
 <body>
+
     <div class="container">
-        <div class="search-bar">
-            <div>
-                <label for="timestamp-search">Timestamp:</label>
-                <input type="text" id="timestamp-search" placeholder="Search by Timestamp">
-            </div>
-            <div>
-                <label for="level-search">Log Level:</label>
-                <input type="text" id="level-search" placeholder="Search by Log Level">
-            </div>
-            <div>
-                <label for="message-search">Message:</label>
-                <input type="text" id="message-search" placeholder="Search by Message">
-            </div>
-            <button onclick="searchLogs()">Search</button>
+        <h1>Log Table</h1>
+
+        <!-- Filter Options -->
+        <div class="filter-container">
+            <label for="log-level">Filter by Log Level:</label>
+            <select id="log-level" onchange="filterLogs()">
+                <option value="">All</option>
+                <option value="INFO">INFO</option>
+                <option value="ERROR">ERROR</option>
+                <option value="WARNING">WARNING</option>
+            </select>
         </div>
 
-        <div class="logs" id="logs">
-            <div id="loading" class="loading">Loading logs...</div>
-            <!-- Logs will be displayed here -->
+        <!-- Search Option -->
+        <div class="search-container">
+            <label for="search-input">Search Logs:</label>
+            <input type="text" id="search-input" oninput="searchLogs()" placeholder="Search by timestamp, level, or message" />
+        </div>
+
+        <!-- Logs Table -->
+        <table id="logs-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Log Level</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Log rows will be added here dynamically -->
+            </tbody>
+        </table>
+
+        <!-- Pagination Controls -->
+        <div class="pagination" id="pagination">
+            <!-- Pagination buttons will be added here -->
         </div>
     </div>
 
     <script>
-        const apiUrl = "https://example.com/api/logs"; // Replace with your API URL
+        // Sample API endpoint, replace with your actual API endpoint
+        const apiUrl = 'https://example.com/api/logs';
 
-        let allLogs = [];
+        let logs = [];
+        let filteredLogs = [];
+        let currentPage = 1;
+        const logsPerPage = 5;
 
-        // Function to fetch logs from the API
+        // Fetch logs from the API
         async function fetchLogs() {
             try {
                 const response = await fetch(apiUrl);
-                const data = await response.json();
-                allLogs = data.logs; // Assuming the API returns a 'logs' array
-                displayLogs(allLogs);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch logs');
+                }
+
+                logs = await response.json();
+                filteredLogs = [...logs]; // Initially no filtering
+
+                renderTable();
+                renderPagination();
             } catch (error) {
                 console.error('Error fetching logs:', error);
-                document.getElementById('loading').innerText = "Failed to load logs.";
             }
         }
 
-        // Function to display logs in the UI
-        function displayLogs(logs) {
-            const logsContainer = document.getElementById('logs');
-            const loadingElement = document.getElementById('loading');
-            loadingElement.style.display = 'none';  // Hide loading message when logs are loaded
-            logsContainer.innerHTML = '';
+        // Render the table with the current logs
+        function renderTable() {
+            const tableBody = document.querySelector('#logs-table tbody');
+            tableBody.innerHTML = '';
 
-            if (logs.length === 0) {
-                logsContainer.innerHTML = '<p>No logs found.</p>';
-                return;
-            }
+            const startIdx = (currentPage - 1) * logsPerPage;
+            const endIdx = startIdx + logsPerPage;
 
-            logs.forEach(log => {
-                const logElement = document.createElement('div');
-                logElement.classList.add('log-entry');
-                logElement.innerHTML = `
-                    <p><strong class="log-level ${log.logLevel}">${log.logLevel}</strong> - <span>${log.timestamp}</span></p>
-                    <p>${log.message}</p>
-                `;
-                logsContainer.appendChild(logElement);
+            const logsToDisplay = filteredLogs.slice(startIdx, endIdx);
+
+            logsToDisplay.forEach(log => {
+                const row = document.createElement('tr');
+                const timestampCell = document.createElement('td');
+                timestampCell.textContent = log.timestamp;
+                row.appendChild(timestampCell);
+
+                const logLevelCell = document.createElement('td');
+                logLevelCell.textContent = log.logLevel;
+                row.appendChild(logLevelCell);
+
+                const messageCell = document.createElement('td');
+                messageCell.textContent = log.message;
+                row.appendChild(messageCell);
+
+                tableBody.appendChild(row);
             });
         }
 
-        // Function to search logs based on multiple criteria (timestamp, logLevel, and message)
+        // Render pagination controls
+        function renderPagination() {
+            const paginationDiv = document.getElementById('pagination');
+            paginationDiv.innerHTML = '';
+
+            const totalPages = Math.ceil(filteredLogs.length / logsPerPage);
+
+            for (let i = 1; i <= totalPages; i++) {
+                const button = document.createElement('button');
+                button.textContent = i;
+                button.onclick = () => changePage(i);
+                if (i === currentPage) {
+                    button.disabled = true;
+                }
+                paginationDiv.appendChild(button);
+            }
+        }
+
+        // Change the current page
+        function changePage(pageNumber) {
+            currentPage = pageNumber;
+            renderTable();
+            renderPagination();
+        }
+
+        // Filter the logs by selected log level
+        function filterLogs() {
+            const selectedLogLevel = document.getElementById('log-level').value;
+
+            if (selectedLogLevel) {
+                filteredLogs = logs.filter(log => log.logLevel === selectedLogLevel);
+            } else {
+                filteredLogs = [...logs];
+            }
+
+            currentPage = 1; // Reset to first page after filtering
+            renderTable();
+            renderPagination();
+        }
+
+        // Search logs by timestamp, log level, or message
         function searchLogs() {
-            const timestampQuery = document.getElementById('timestamp-search').value.toLowerCase();
-            const levelQuery = document.getElementById('level-search').value.toLowerCase();
-            const messageQuery = document.getElementById('message-search').value.toLowerCase();
+            const searchQuery = document.getElementById('search-input').value.toLowerCase();
 
-            const filteredLogs = allLogs.filter(log => {
-                const matchesTimestamp = log.timestamp.toLowerCase().includes(timestampQuery);
-                const matchesLevel = log.logLevel.toLowerCase().includes(levelQuery);
-                const matchesMessage = log.message.toLowerCase().includes(messageQuery);
-
-                return matchesTimestamp && matchesLevel && matchesMessage;
+            filteredLogs = logs.filter(log => {
+                return log.timestamp.toLowerCase().includes(searchQuery) ||
+                       log.logLevel.toLowerCase().includes(searchQuery) ||
+                       log.message.toLowerCase().includes(searchQuery);
             });
 
-            displayLogs(filteredLogs);
+            currentPage = 1; // Reset to first page after searching
+            renderTable();
+            renderPagination();
         }
 
-        // Fetch logs when the page loads
+        // Call fetchLogs when the page loads
         window.onload = fetchLogs;
     </script>
+
 </body>
 </html>
