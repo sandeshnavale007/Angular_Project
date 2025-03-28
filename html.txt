@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Log Viewer</h1>
+        </header>
+
+        <div class="filter-section">
+            <label for="logLevel">Filter by Log Level:</label>
+            <select id="logLevel" onchange="loadLogs()">
+                <option value="all">All</option>
+                <option value="info">Info</option>
+                <option value="warn">Warning</option>
+                <option value="error">Error</option>
+            </select>
+            
+            <label for="search">Search Message:</label>
+            <input type="text" id="search" oninput="loadLogs()" placeholder="Search logs by message">
+        </div>
+
+        <div class="log-table">
+            <table id="logTable">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Log Level</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Logs will be dynamically injected here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button id="prevBtn" onclick="changePage('prev')">Prev</button>
+            <span id="pageNumber">Page: 1</span>
+            <button id="nextBtn" onclick="changePage('next')">Next</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
+
+
+
+let currentPage = 1;
+let pageSize = 10;
+let totalLogs = 0;
+
+// Function to load logs from API
+function loadLogs() {
+    const logLevel = document.getElementById('logLevel').value;
+    const searchQuery = document.getElementById('search').value;
+
+    const apiUrl = `https://your-api-endpoint.com/logs?page=${currentPage}&pageSize=${pageSize}&level=${logLevel}&search=${searchQuery}`;
+
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+            totalLogs = data.totalLogs; // Total logs from API
+            updateLogTable(data.logs);
+            updatePagination();
+        })
+        .catch(error => {
+            console.error('Error fetching logs:', error);
+        });
+}
+
+// Function to update the log table with fetched data
+function updateLogTable(logs) {
+    const tableBody = document.querySelector('#logTable tbody');
+    tableBody.innerHTML = ''; // Clear previous rows
+
+    logs.forEach(log => {
+        const row = document.createElement('tr');
+        
+        const timestampCell = document.createElement('td');
+        timestampCell.textContent = log.timestamp;
+        row.appendChild(timestampCell);
+
+        const levelCell = document.createElement('td');
+        levelCell.textContent = log.level;
+        levelCell.classList.add(`log-level-${log.level}`);
+        row.appendChild(levelCell);
+
+        const messageCell = document.createElement('td');
+        messageCell.textContent = log.message;
+        row.appendChild(messageCell);
+
+        tableBody.appendChild(row);
+    });
+}
+
+// Function to update pagination controls
+function updatePagination() {
+    const totalPages = Math.ceil(totalLogs / pageSize);
+    document.getElementById('pageNumber').textContent = `Page: ${currentPage} / ${totalPages}`;
+
+    // Disable/Enable Prev and Next buttons based on current page
+    document.getElementById('prevBtn').disabled = currentPage === 1;
+    document.getElementById('nextBtn').disabled = currentPage === totalPages;
+}
+
+// Function to change page
+function changePage(direction) {
+    if (direction === 'next' && currentPage < Math.ceil(totalLogs / pageSize)) {
+        currentPage++;
+    } else if (direction === 'prev' && currentPage > 1) {
+        currentPage--;
+    }
+    loadLogs(); // Reload logs after changing page
+}
+
+// Initial load
+window.onload = () => {
+    loadLogs();
+};
+
+
+
+
