@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        header {
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        .log-entry {
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .log-entry .timestamp {
+            font-size: 0.9em;
+            color: gray;
+        }
+        .log-entry .log-level {
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .log-entry .message {
+            margin-top: 5px;
+        }
+        .log-level.debug {
+            color: #4caf50;
+        }
+        .log-level.info {
+            color: #2196f3;
+        }
+        .log-level.warning {
+            color: #ff9800;
+        }
+        .log-level.error {
+            color: #f44336;
+        }
+        .log-level.critical {
+            color: #9c27b0;
+        }
+        .log-entry:hover {
+            background-color: #fafafa;
+        }
+        .pagination {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .pagination button {
+            padding: 5px 10px;
+            margin: 0 5px;
+            cursor: pointer;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+        .pagination button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .loader {
+            text-align: center;
+            font-size: 18px;
+            color: #2196f3;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Log Viewer</h1>
+</header>
+
+<div class="container" id="log-container">
+    <!-- Logs will be inserted here dynamically -->
+</div>
+
+<div class="pagination" id="pagination-controls">
+    <!-- Pagination controls will be inserted here -->
+</div>
+
+<div id="loader" class="loader">
+    Loading data, please wait...
+</div>
+
+<script>
+    const logs = [
+        { timestamp: "2025-03-30T12:45:00", level: "info", message: "System started successfully." },
+        { timestamp: "2025-03-30T12:46:12", level: "debug", message: "Debugging system initialization." },
+        { timestamp: "2025-03-30T12:47:30", level: "warning", message: "Disk space is running low." },
+        { timestamp: "2025-03-30T12:48:00", level: "error", message: "Unable to connect to the database." },
+        { timestamp: "2025-03-30T12:50:15", level: "critical", message: "System failure detected!" },
+        { timestamp: "2025-03-30T12:52:00", level: "info", message: "User logged in." },
+        { timestamp: "2025-03-30T12:53:00", level: "warning", message: "API rate limit exceeded." },
+        { timestamp: "2025-03-30T12:55:00", level: "error", message: "Error processing request." },
+        { timestamp: "2025-03-30T12:57:00", level: "debug", message: "Debugging feature X." },
+        { timestamp: "2025-03-30T12:59:00", level: "critical", message: "Critical system error!" },
+        { timestamp: "2025-03-30T13:00:00", level: "info", message: "System restarted." },
+        { timestamp: "2025-03-30T13:05:00", level: "warning", message: "High memory usage detected." }
+    ];
+
+    const logsPerPage = 5; // Number of logs to show per page
+    let currentPage = 1;
+    
+    // Function to create log entry elements
+    function createLogEntry(log) {
+        const logEntry = document.createElement('div');
+        logEntry.classList.add('log-entry');
+
+        const timestamp = document.createElement('div');
+        timestamp.classList.add('timestamp');
+        timestamp.textContent = log.timestamp;
+
+        const level = document.createElement('div');
+        level.classList.add('log-level', log.level);
+        level.textContent = log.level;
+
+        const message = document.createElement('div');
+        message.classList.add('message');
+        message.textContent = log.message;
+
+        logEntry.appendChild(timestamp);
+        logEntry.appendChild(level);
+        logEntry.appendChild(message);
+
+        return logEntry;
+    }
+
+    // Function to render logs for the current page
+    function renderLogs() {
+        const container = document.getElementById('log-container');
+        container.innerHTML = ''; // Clear current logs
+        const loader = document.getElementById('loader');
+        
+        // Show loader
+        loader.style.display = 'block';
+
+        const startIndex = (currentPage - 1) * logsPerPage;
+        const endIndex = startIndex + logsPerPage;
+        const logsToDisplay = logs.slice(startIndex, endIndex);
+        
+        setTimeout(() => { // Simulating async data fetch delay
+            logsToDisplay.forEach(log => {
+                const logEntry = createLogEntry(log);
+                container.appendChild(logEntry);
+            });
+
+            updatePaginationControls();
+
+            // Hide loader after data is rendered
+            loader.style.display = 'none';
+        }, 1000); // Simulate 1-second delay for loading
+    }
+
+    // Function to update pagination controls
+    function updatePaginationControls() {
+        const paginationControls = document.getElementById('pagination-controls');
+        const totalPages = Math.ceil(logs.length / logsPerPage);
+
+        // Clear existing pagination controls
+        paginationControls.innerHTML = '';
+
+        // Previous button
+        const prevButton = document.createElement('button');
+        prevButton.textContent = 'Previous';
+        prevButton.disabled = currentPage === 1;
+        prevButton.onclick = () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderLogs();
+            }
+        };
+        paginationControls.appendChild(prevButton);
+
+        // Page number
+        const pageNumber = document.createElement('span');
+        pageNumber.textContent = `Page ${currentPage} of ${totalPages}`;
+        paginationControls.appendChild(pageNumber);
+
+        // Next button
+        const nextButton = document.createElement('button');
+        nextButton.textContent = 'Next';
+        nextButton.disabled = currentPage === totalPages;
+        nextButton.onclick = () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderLogs();
+            }
+        };
+        paginationControls.appendChild(nextButton);
+    }
+
+    // Render logs when the page loads
+    window.onload = renderLogs;
+</script>
+
+</body>
+</html>
