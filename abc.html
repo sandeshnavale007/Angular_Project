@@ -3,213 +3,167 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Log Viewer</title>
+    <title>Log Viewer with AngularJS</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f4f4f4;
-        }
-        header {
-            background-color: #333;
-            color: white;
-            padding: 10px;
-            text-align: center;
+            background-color: #f4f7f6;
         }
         .container {
-            display: flex;
-            flex-direction: column;
+            width: 80%;
+            margin: 30px auto;
+            background-color: #fff;
             padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
-        .log-entry {
-            background-color: white;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-        }
-        .log-entry .timestamp {
-            font-size: 0.9em;
-            color: gray;
-        }
-        .log-entry .log-level {
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .log-entry .message {
-            margin-top: 5px;
-        }
-        .log-level.debug {
-            color: #4caf50;
-        }
-        .log-level.info {
-            color: #2196f3;
-        }
-        .log-level.warning {
-            color: #ff9800;
-        }
-        .log-level.error {
-            color: #f44336;
-        }
-        .log-level.critical {
-            color: #9c27b0;
-        }
-        .log-entry:hover {
-            background-color: #fafafa;
-        }
-        .pagination {
+        h1 {
             text-align: center;
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
             margin-top: 20px;
         }
-        .pagination button {
-            padding: 5px 10px;
-            margin: 0 5px;
-            cursor: pointer;
-            background-color: #333;
-            color: white;
-            border: none;
-            border-radius: 3px;
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
         }
-        .pagination button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
+        th {
+            background-color: #f3f4f6;
         }
-        .loader {
+        td {
+            color: #555;
+        }
+        .level-info {
+            color: green;
+        }
+        .level-warning {
+            color: orange;
+        }
+        .level-error {
+            color: red;
+        }
+        .pagination {
+            margin-top: 20px;
             text-align: center;
-            font-size: 18px;
-            color: #2196f3;
-            display: none;
+        }
+        .pagination button {
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        .search-bar {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .search-bar input {
+            padding: 8px;
+            width: 60%;
+            font-size: 14px;
         }
     </style>
 </head>
-<body>
+<body ng-app="logViewerApp">
 
-<header>
+<div class="container" ng-controller="LogController">
     <h1>Log Viewer</h1>
-</header>
 
-<div class="container" id="log-container">
-    <!-- Logs will be inserted here dynamically -->
-</div>
+    <!-- Search Bar -->
+    <div class="search-bar">
+        <input type="text" ng-model="searchQuery" placeholder="Search logs..." ng-change="loadLogs()">
+    </div>
 
-<div class="pagination" id="pagination-controls">
-    <!-- Pagination controls will be inserted here -->
-</div>
+    <!-- Log Table -->
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Log Level</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr ng-repeat="log in logs">
+                <td>{{ log.timestamp }}</td>
+                <td ng-class="getLogLevelClass(log.level)">{{ log.level }}</td>
+                <td>{{ log.message }}</td>
+            </tr>
+        </tbody>
+    </table>
 
-<div id="loader" class="loader">
-    Loading data, please wait...
+    <!-- Pagination -->
+    <div class="pagination">
+        <button ng-click="changePage(i)" ng-repeat="i in pageNumbers">{{ i }}</button>
+    </div>
 </div>
 
 <script>
-    const logs = [
-        { timestamp: "2025-03-30T12:45:00", level: "info", message: "System started successfully." },
-        { timestamp: "2025-03-30T12:46:12", level: "debug", message: "Debugging system initialization." },
-        { timestamp: "2025-03-30T12:47:30", level: "warning", message: "Disk space is running low." },
-        { timestamp: "2025-03-30T12:48:00", level: "error", message: "Unable to connect to the database." },
-        { timestamp: "2025-03-30T12:50:15", level: "critical", message: "System failure detected!" },
-        { timestamp: "2025-03-30T12:52:00", level: "info", message: "User logged in." },
-        { timestamp: "2025-03-30T12:53:00", level: "warning", message: "API rate limit exceeded." },
-        { timestamp: "2025-03-30T12:55:00", level: "error", message: "Error processing request." },
-        { timestamp: "2025-03-30T12:57:00", level: "debug", message: "Debugging feature X." },
-        { timestamp: "2025-03-30T12:59:00", level: "critical", message: "Critical system error!" },
-        { timestamp: "2025-03-30T13:00:00", level: "info", message: "System restarted." },
-        { timestamp: "2025-03-30T13:05:00", level: "warning", message: "High memory usage detected." }
-    ];
+    // Define the AngularJS application
+    angular.module('logViewerApp', [])
+        .controller('LogController', ['$scope', '$http', function($scope, $http) {
 
-    const logsPerPage = 5; // Number of logs to show per page
-    let currentPage = 1;
-    
-    // Function to create log entry elements
-    function createLogEntry(log) {
-        const logEntry = document.createElement('div');
-        logEntry.classList.add('log-entry');
+            const logsPerPage = 5;
+            $scope.currentPage = 1;
+            $scope.totalLogs = 20; // Simulating the total logs for pagination
+            $scope.logs = [];
+            $scope.searchQuery = '';
 
-        const timestamp = document.createElement('div');
-        timestamp.classList.add('timestamp');
-        timestamp.textContent = log.timestamp;
+            // Function to fetch logs from the server (simulated)
+            $scope.fetchLogs = function(page, searchQuery = '') {
+                const apiUrl = `https://jsonplaceholder.typicode.com/posts?_page=${page}&_limit=${logsPerPage}&q=${searchQuery}`;
 
-        const level = document.createElement('div');
-        level.classList.add('log-level', log.level);
-        level.textContent = log.level;
+                $http.get(apiUrl)
+                    .then(function(response) {
+                        $scope.logs = response.data.map(log => ({
+                            timestamp: new Date().toLocaleString(), // Simulated timestamp
+                            level: log.title.includes('error') ? 'ERROR' :
+                                   log.title.includes('warn') ? 'WARNING' : 'INFO',
+                            message: log.body
+                        }));
+                    });
+            };
 
-        const message = document.createElement('div');
-        message.classList.add('message');
-        message.textContent = log.message;
+            // Function to load logs based on current page and search query
+            $scope.loadLogs = function() {
+                $scope.fetchLogs($scope.currentPage, $scope.searchQuery);
+                $scope.updatePagination();
+            };
 
-        logEntry.appendChild(timestamp);
-        logEntry.appendChild(level);
-        logEntry.appendChild(message);
+            // Function to update pagination
+            $scope.updatePagination = function() {
+                const totalPages = Math.ceil($scope.totalLogs / logsPerPage);
+                $scope.pageNumbers = [];
+                for (let i = 1; i <= totalPages; i++) {
+                    $scope.pageNumbers.push(i);
+                }
+            };
 
-        return logEntry;
-    }
+            // Function to change the current page
+            $scope.changePage = function(page) {
+                $scope.currentPage = page;
+                $scope.loadLogs();
+            };
 
-    // Function to render logs for the current page
-    function renderLogs() {
-        const container = document.getElementById('log-container');
-        container.innerHTML = ''; // Clear current logs
-        const loader = document.getElementById('loader');
-        
-        // Show loader
-        loader.style.display = 'block';
+            // Function to get the log level class
+            $scope.getLogLevelClass = function(level) {
+                switch (level) {
+                    case 'INFO': return 'level-info';
+                    case 'WARNING': return 'level-warning';
+                    case 'ERROR': return 'level-error';
+                    default: return '';
+                }
+            };
 
-        const startIndex = (currentPage - 1) * logsPerPage;
-        const endIndex = startIndex + logsPerPage;
-        const logsToDisplay = logs.slice(startIndex, endIndex);
-        
-        setTimeout(() => { // Simulating async data fetch delay
-            logsToDisplay.forEach(log => {
-                const logEntry = createLogEntry(log);
-                container.appendChild(logEntry);
-            });
+            // Initial load when the page loads
+            $scope.loadLogs();
 
-            updatePaginationControls();
-
-            // Hide loader after data is rendered
-            loader.style.display = 'none';
-        }, 1000); // Simulate 1-second delay for loading
-    }
-
-    // Function to update pagination controls
-    function updatePaginationControls() {
-        const paginationControls = document.getElementById('pagination-controls');
-        const totalPages = Math.ceil(logs.length / logsPerPage);
-
-        // Clear existing pagination controls
-        paginationControls.innerHTML = '';
-
-        // Previous button
-        const prevButton = document.createElement('button');
-        prevButton.textContent = 'Previous';
-        prevButton.disabled = currentPage === 1;
-        prevButton.onclick = () => {
-            if (currentPage > 1) {
-                currentPage--;
-                renderLogs();
-            }
-        };
-        paginationControls.appendChild(prevButton);
-
-        // Page number
-        const pageNumber = document.createElement('span');
-        pageNumber.textContent = `Page ${currentPage} of ${totalPages}`;
-        paginationControls.appendChild(pageNumber);
-
-        // Next button
-        const nextButton = document.createElement('button');
-        nextButton.textContent = 'Next';
-        nextButton.disabled = currentPage === totalPages;
-        nextButton.onclick = () => {
-            if (currentPage < totalPages) {
-                currentPage++;
-                renderLogs();
-            }
-        };
-        paginationControls.appendChild(nextButton);
-    }
-
-    // Render logs when the page loads
-    window.onload = renderLogs;
+        }]);
 </script>
 
 </body>
