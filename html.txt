@@ -130,3 +130,91 @@ window.onload = () => {
 
 
 
+
+
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:ui="http://java.sun.com/jsf/facelets" xmlns:h="http://java.sun.com/jsf/html" xmlns:ng="http://angularjs.org" ng-app="logApp">
+<head>
+    <meta charset="UTF-8" />
+    <title>Log Viewer</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        input { padding: 5px; width: 300px; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .INFO { color: green; }
+        .WARN { color: orange; }
+        .ERROR { color: red; }
+    </style>
+</head>
+<body>
+
+    <h:body>
+        <!-- JSF Composition to structure the page -->
+        <ui:composition template="/templates/main.xhtml">
+        
+            <ui:define name="content">
+                <!-- AngularJS-based content to display logs -->
+                <div ng-controller="LogController">
+                    <h2>Log Viewer</h2>
+                    
+                    <!-- Search Box -->
+                    <input type="text" ng-model="searchTerm" placeholder="Search logs..." ng-change="fetchLogs()" />
+                    
+                    <!-- Logs Table -->
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Level</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr ng-repeat="log in logs">
+                                <td>{{ log.timestamp }}</td>
+                                <td class="{{ log.level }}">{{ log.level }}</td>
+                                <td>{{ log.message }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </ui:define>
+        
+        </ui:composition>
+    </h:body>
+
+    <script>
+        var app = angular.module('logApp', []);
+
+        app.controller('LogController', function($scope, $http) {
+            // Initialize logs array
+            $scope.logs = [];
+
+            // Fetch logs from the Spring Boot backend API
+            $scope.fetchLogs = function() {
+                var url = '/api/logs';
+                if ($scope.searchTerm) {
+                    url += '?keyword=' + encodeURIComponent($scope.searchTerm);
+                }
+
+                // Make HTTP GET request to fetch logs
+                $http.get(url).then(function(response) {
+                    $scope.logs = response.data;
+                });
+            };
+
+            // Initial fetch of logs when the page loads
+            $scope.fetchLogs();
+
+            // Auto refresh every 5 seconds
+            setInterval($scope.fetchLogs, 5000);
+        });
+    </script>
+
+</body>
+</html>
+
