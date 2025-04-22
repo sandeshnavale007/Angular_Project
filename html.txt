@@ -218,3 +218,70 @@ window.onload = () => {
 </body>
 </html>
 
+
+
+
+
+package com.example.logviewer.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
+
+@RestController
+public class LogController {
+
+    private static final String LOG_FILE_PATH = "/path/to/your/server-info.log"; // Update with the actual log file path
+
+    @GetMapping("/api/logs")
+    public List<String> getLogs(
+            @RequestParam(required = false) List<String> keywords,
+            @RequestParam(required = false, defaultValue = "OR") String filterType) throws IOException {
+
+        List<String> logs = new ArrayList<>();
+
+        // If no keywords are provided, return all logs
+        if (keywords == null || keywords.isEmpty()) {
+            return logs;
+        }
+
+        // Construct grep command based on the filter type (OR or AND)
+        StringBuilder command = new StringBuilder("grep");
+
+        if (filterType.equalsIgnoreCase("AND")) {
+            // For AND, chain multiple grep commands (search for all keywords)
+            for (String keyword : keywords) {
+                command.append(" -i '").append(keyword).append("'");  // Case-insensitive grep search for the keyword
+            }
+        } else {
+            // For OR, combine the keywords with the OR condition (|) in grep
+            command.append(" -i '").append(String.join("|", keywords)).append("'");
+        }
+
+        // Add the log file path to the command
+        command.append(" ").append(LOG_FILE_PATH);
+
+        // Execute the grep command and capture the filtered output
+        Process process = Runtime.getRuntime().exec(command.toString());
+        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            logs.add(line);  // Add each filtered line to the logs list
+        }
+
+        // Wait for the process to complete
+        try {
+            process.waitFor();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        return logs;  // Return the filtered logs as the response
+    }
+}
