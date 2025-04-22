@@ -285,3 +285,23 @@ public class LogController {
         return logs;  // Return the filtered logs as the response
     }
 }
+
+
+
+
+
+
+// Construct grep chain
+    StringBuilder commandBuilder = new StringBuilder("cat " + filePath);
+
+    for (String group : orGroups) {
+        commandBuilder.append(" | grep -Ei \"").append(group).append("\"");
+    }
+
+    List<String> command = new ArrayList<>();
+    command.add("bash");
+    command.add("-c");
+    command.add(commandBuilder.toString());
+
+    ProcessBuilder builder = new ProcessBuilder(command);
+    Process process = builder.start();
