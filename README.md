@@ -164,114 +164,104 @@ public class ActiveStatusPartitioner implements Partitioner {
 
 ======================
 @Configuration
-@EnableBatchProcessing
 public class BatchConfig {
+
     private static final int GRID_SIZE = 4, CHUNK_SIZE = 100;
 
-    private final JobBuilderFactory jobs;
-    private final StepBuilderFactory steps;
-    private final EntityManagerFactory emf;
-    private final MyEntityRepository repo;
-    private final ActiveStatusPartitioner partitioner;
+    @Bean
+    public Step workerStep(JobRepository jobRepo,
+                           PlatformTransactionManager txMgr,
+                           JpaPagingItemReader<MyEntity> reader,
+                           ItemProcessor<MyEntity,MyEntity> processor,
+                           ItemWriter<MyEntity> writer,
+                           SkipListener<MyEntity,MyEntity> skipListener) {
+        return new StepBuilder("workerStep", jobRepo)
+            .<MyEntity,MyEntity>chunk(CHUNK_SIZE, txMgr)
+            .reader(reader)
+            .processor(processor)
+            .writer(writer)
+            .faultTolerant()
+               .retryLimit(3)
+               .retry(DeadlockLoserDataAccessException.class)
+               .skipLimit(10)
+               .skip(Exception.class)
+               .noSkip(NullPointerException.class)
+               .listener(skipListener)
+            .build();
+    }
 
-    public BatchConfig(JobBuilderFactory jobs,
-                       StepBuilderFactory steps,
-                       EntityManagerFactory emf,
-                       MyEntityRepository repo,
-                       ActiveStatusPartitioner partitioner) {
-        this.jobs = jobs;
-        this.steps = steps;
-        this.emf = emf;
-        this.repo = repo;
-        this.partitioner = partitioner;
+    @Bean
+    public Job partitionedJob(JobRepository jobRepo,
+                              TaskExecutor taskExecutor,
+                              JobLifecycleListener listener,
+                              ActiveStatusPartitioner partitioner,
+                              Step workerStep) {
+        Step master = new StepBuilder("masterStep", jobRepo)
+            .partitioner(workerStep.getName(), partitioner)
+            .step(workerStep)
+            .taskExecutor(taskExecutor)
+            .gridSize(GRID_SIZE)
+            .build();
+
+        return new JobBuilder("partitionJob", jobRepo)
+            .listener(listener)
+            .start(master)
+            .build();
     }
 
     @Bean @StepScope
     public JpaPagingItemReader<MyEntity> reader(
-            @Value("#{stepExecutionContext['startId']}") long startId,
-            @Value("#{stepExecutionContext['endId']}") long endId) {
+        EntityManagerFactory emf,
+        @Value("#{stepExecutionContext['startId']}") long start,
+        @Value("#{stepExecutionContext['endId']}") long end
+    ) {
         return new JpaPagingItemReaderBuilder<MyEntity>()
-                .name("jpaReader")
-                .entityManagerFactory(emf)
-                .queryString("SELECT e FROM MyEntity e WHERE e.active = true AND e.id BETWEEN :start AND :end")
-                .parameterValues(Map.of("start", startId, "end", endId))
-                .pageSize(CHUNK_SIZE)
-                .build();
+            .name("jpaReader")
+            .entityManagerFactory(emf)
+            .queryString("""
+               SELECT e FROM MyEntity e
+               WHERE e.active = true AND e.id BETWEEN :start AND :end
+            """)
+            .parameterValues(Map.of("start", start, "end", end))
+            .pageSize(CHUNK_SIZE)
+            .build();
     }
 
     @Bean
-    public ItemProcessor<MyEntity, MyEntity> processor() {
-        return entity -> {
-            boolean ok = entity.getSomeField() != null;
-            entity.setStatus(ok ? "PASS" : "FAIL");
-            return entity;
+    public ItemProcessor<MyEntity,MyEntity> processor() {
+        return e -> {
+            boolean ok = e.getSomeField() != null;
+            e.setStatus(ok ? "PASS" : "FAIL");
+            return e;
         };
     }
 
     @Bean @StepScope
-    public ItemWriter<MyEntity> writer() {
-        JpaItemWriter<MyEntity> delegate = new JpaItemWriter<>();
+    public ItemWriter<MyEntity> writer(EntityManagerFactory emf) {
+        var delegate = new JpaItemWriter<MyEntity>();
         delegate.setEntityManagerFactory(emf);
-        SynchronizedItemStreamWriter<MyEntity> sync = new SynchronizedItemStreamWriter<>();
+        var sync = new SynchronizedItemStreamWriter<MyEntity>();
         sync.setDelegate(delegate);
         return sync;
     }
 
     @Bean
-    public SkipListener<MyEntity, MyEntity> skipListener() {
+    public SkipListener<MyEntity,MyEntity> skipListener() {
         return new SkipListener<>() {
-            @Override public void onSkipInRead(Throwable t) { System.err.println("Skipped read: " + t); }
-            @Override public void onSkipInProcess(MyEntity item, Throwable t) { System.err.println("Skipped process: " + item + ", " + t); }
-            @Override public void onSkipInWrite(MyEntity item, Throwable t) { System.err.println("Skipped write: " + item + ", " + t); }
+            public void onSkipInRead(Throwable t)    { System.err.println("Skip read: " + t); }
+            public void onSkipInProcess(MyEntity i,Throwable t) { System.err.println("Skip proc: " + i); }
+            public void onSkipInWrite(MyEntity i,Throwable t) { System.err.println("Skip write: " + i); }
         };
     }
 
     @Bean
-    public Step workerStep(PlatformTransactionManager txManager) {
-        return steps.get("workerStep")
-            .<MyEntity, MyEntity>chunk(CHUNK_SIZE)
-            .reader(reader(0,0))
-            .processor(processor())
-            .writer(writer())
-            .faultTolerant()
-                .retryLimit(3)
-                .retry(DeadlockLoserDataAccessException.class)
-                .skipLimit(10)
-                .skip(Exception.class)
-                .noSkip(NullPointerException.class)
-                .listener(skipListener())
-            .transactionManager(txManager)
-            .build();
-    }
-
-    @Bean
-    public Step masterStep(TaskExecutor executor, PlatformTransactionManager txManager) {
-        return steps.get("masterStep")
-            .partitioner(workerStep(txManager).getName(), partitioner)
-            .step(workerStep(txManager))
-            .taskExecutor(executor)
-            .gridSize(GRID_SIZE)
-            .build();
-    }
-
-    @Bean
-    public Job partitionedJob(TaskExecutor executor,
-                              PlatformTransactionManager txManager,
-                              JobLifecycleListener jobListener) {
-        return jobs.get("partitionedJob")
-            .listener(jobListener) // integrates beforeJob/afterJob
-            .start(masterStep(executor, txManager))
-            .build();
-    }
-
-    @Bean
     public TaskExecutor taskExecutor() {
-        var exec = new ThreadPoolTaskExecutor();
-        exec.setCorePoolSize(GRID_SIZE);
-        exec.setMaxPoolSize(GRID_SIZE);
-        exec.setThreadNamePrefix("partition-");
-        exec.initialize();
-        return exec;
+        var te = new ThreadPoolTaskExecutor();
+        te.setCorePoolSize(GRID_SIZE);
+        te.setMaxPoolSize(GRID_SIZE);
+        te.setThreadNamePrefix("part-");
+        te.initialize();
+        return te;
     }
 }
 
@@ -302,5 +292,21 @@ public class JobLifecycleListener implements JobExecutionListener {
             System.out.println("❌ Job ended with status: " + status +
                                " and exit status: " + jobExecution.getExitStatus());
         }
+    }
+}
+
+
+
+
+@Component
+public class JobLifecycleListener implements JobExecutionListener {
+    @Override
+    public void beforeJob(JobExecution je) {
+        System.out.println("🚀 Starting job: " + je.getJobInstance().getJobName());
+    }
+
+    @Override
+    public void afterJob(JobExecution je) {
+        System.out.println("🏁 Job ended with status: " + je.getStatus());
     }
 }
