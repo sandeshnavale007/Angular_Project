@@ -124,3 +124,33 @@ public JpaPagingItemReader<User> userReader(
     return reader;
 }
 
+
+
+
+=====
+@Component
+public class ActiveStatusPartitioner implements Partitioner {
+
+    @Autowired private MyEntityRepository repo;  // JPA repo
+
+    @Override
+    public Map<String, ExecutionContext> partition(int gridSize) {
+        long min = repo.minIdByStatus(true);
+        long max = repo.maxIdByStatus(true);
+        long range = (max - min + 1) / gridSize;
+
+        Map<String, ExecutionContext> partitions = new HashMap<>();
+        long start = min, end = start + range - 1;
+
+        for (int i = 0; i < gridSize; i++) {
+            ExecutionContext ctx = new ExecutionContext();
+            ctx.putLong("startId", start);
+            ctx.putLong("endId", i == gridSize - 1 ? max : end);
+            partitions.put("partition" + i, ctx);
+            start = end + 1;
+            end = start + range - 1;
+        }
+        return partitions;
+    }
+}
+
