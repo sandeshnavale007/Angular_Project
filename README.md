@@ -163,32 +163,40 @@ public class ActiveStatusPartitioner implements Partitioner {
 
 
 ======================
-
 @Configuration
 @EnableBatchProcessing
 public class BatchConfig {
-
     private static final int GRID_SIZE = 4, CHUNK_SIZE = 100;
 
-    @Autowired JobBuilderFactory jobs;
-    @Autowired StepBuilderFactory steps;
-    @Autowired EntityManagerFactory emf;
-    @Autowired MyEntityRepository repo;
-    @Autowired ActiveStatusPartitioner partitioner;
+    private final JobBuilderFactory jobs;
+    private final StepBuilderFactory steps;
+    private final EntityManagerFactory emf;
+    private final MyEntityRepository repo;
+    private final ActiveStatusPartitioner partitioner;
 
-    @Bean
-    @StepScope
+    public BatchConfig(JobBuilderFactory jobs,
+                       StepBuilderFactory steps,
+                       EntityManagerFactory emf,
+                       MyEntityRepository repo,
+                       ActiveStatusPartitioner partitioner) {
+        this.jobs = jobs;
+        this.steps = steps;
+        this.emf = emf;
+        this.repo = repo;
+        this.partitioner = partitioner;
+    }
+
+    @Bean @StepScope
     public JpaPagingItemReader<MyEntity> reader(
-        @Value("#{stepExecutionContext['startId']}") long startId,
-        @Value("#{stepExecutionContext['endId']}") long endId
-    ) {
+            @Value("#{stepExecutionContext['startId']}") long startId,
+            @Value("#{stepExecutionContext['endId']}") long endId) {
         return new JpaPagingItemReaderBuilder<MyEntity>()
-            .name("reader")
-            .entityManagerFactory(emf)
-            .queryString("SELECT e FROM MyEntity e WHERE e.active = true AND e.id BETWEEN :start AND :end")
-            .parameterValues(Map.of("start", startId, "end", endId))
-            .pageSize(CHUNK_SIZE)
-            .build();
+                .name("jpaReader")
+                .entityManagerFactory(emf)
+                .queryString("SELECT e FROM MyEntity e WHERE e.active = true AND e.id BETWEEN :start AND :end")
+                .parameterValues(Map.of("start", startId, "end", endId))
+                .pageSize(CHUNK_SIZE)
+                .build();
     }
 
     @Bean
@@ -200,47 +208,99 @@ public class BatchConfig {
         };
     }
 
-    @Bean
-    @StepScope
+    @Bean @StepScope
     public ItemWriter<MyEntity> writer() {
-        return items -> repo.saveAll(items);
+        JpaItemWriter<MyEntity> delegate = new JpaItemWriter<>();
+        delegate.setEntityManagerFactory(emf);
+        SynchronizedItemStreamWriter<MyEntity> sync = new SynchronizedItemStreamWriter<>();
+        sync.setDelegate(delegate);
+        return sync;
     }
 
     @Bean
-    public Step workerStep() {
+    public SkipListener<MyEntity, MyEntity> skipListener() {
+        return new SkipListener<>() {
+            @Override public void onSkipInRead(Throwable t) { System.err.println("Skipped read: " + t); }
+            @Override public void onSkipInProcess(MyEntity item, Throwable t) { System.err.println("Skipped process: " + item + ", " + t); }
+            @Override public void onSkipInWrite(MyEntity item, Throwable t) { System.err.println("Skipped write: " + item + ", " + t); }
+        };
+    }
+
+    @Bean
+    public Step workerStep(PlatformTransactionManager txManager) {
         return steps.get("workerStep")
             .<MyEntity, MyEntity>chunk(CHUNK_SIZE)
-            .reader(reader(0,0))  // placeholder; real values are injected
+            .reader(reader(0,0))
             .processor(processor())
             .writer(writer())
-            .transactionManager(new JpaTransactionManager(emf))
+            .faultTolerant()
+                .retryLimit(3)
+                .retry(DeadlockLoserDataAccessException.class)
+                .skipLimit(10)
+                .skip(Exception.class)
+                .noSkip(NullPointerException.class)
+                .listener(skipListener())
+            .transactionManager(txManager)
             .build();
     }
 
     @Bean
-    public Step masterStep(TaskExecutor executor) {
+    public Step masterStep(TaskExecutor executor, PlatformTransactionManager txManager) {
         return steps.get("masterStep")
-            .partitioner(workerStep().getName(), partitioner)
-            .step(workerStep())
+            .partitioner(workerStep(txManager).getName(), partitioner)
+            .step(workerStep(txManager))
             .taskExecutor(executor)
             .gridSize(GRID_SIZE)
             .build();
     }
 
     @Bean
-    public Job job() {
-        return jobs.get("partitionJob")
-            .start(masterStep(taskExecutor()))
+    public Job partitionedJob(TaskExecutor executor,
+                              PlatformTransactionManager txManager,
+                              JobLifecycleListener jobListener) {
+        return jobs.get("partitionedJob")
+            .listener(jobListener) // integrates beforeJob/afterJob
+            .start(masterStep(executor, txManager))
             .build();
     }
 
     @Bean
     public TaskExecutor taskExecutor() {
-        ThreadPoolTaskExecutor exec = new ThreadPoolTaskExecutor();
+        var exec = new ThreadPoolTaskExecutor();
         exec.setCorePoolSize(GRID_SIZE);
         exec.setMaxPoolSize(GRID_SIZE);
+        exec.setThreadNamePrefix("partition-");
         exec.initialize();
         return exec;
     }
 }
 
+
+
+
+
+
+
+
+
+
+@Component
+public class JobLifecycleListener implements JobExecutionListener {
+
+    @Override
+    public void beforeJob(JobExecution jobExecution) {
+        System.out.println("🚀 Job " + jobExecution.getJobInstance().getJobName() + " starting at " +
+                           jobExecution.getStartTime());
+    }
+
+    @Override
+    public void afterJob(JobExecution jobExecution) {
+        BatchStatus status = jobExecution.getStatus();
+        if (status == BatchStatus.COMPLETED) {
+            System.out.println("✅ Job completed successfully at " + jobExecution.getEndTime());
+        } else {
+            System.out.println("❌ Job ended with status: " + status +
+                               " and exit status: " + jobExecution.getExitStatus());
+        }
+    }
+}
