@@ -154,3 +154,93 @@ public class ActiveStatusPartitioner implements Partitioner {
     }
 }
 
+
+
+
+
+
+
+
+
+======================
+
+@Configuration
+@EnableBatchProcessing
+public class BatchConfig {
+
+    private static final int GRID_SIZE = 4, CHUNK_SIZE = 100;
+
+    @Autowired JobBuilderFactory jobs;
+    @Autowired StepBuilderFactory steps;
+    @Autowired EntityManagerFactory emf;
+    @Autowired MyEntityRepository repo;
+    @Autowired ActiveStatusPartitioner partitioner;
+
+    @Bean
+    @StepScope
+    public JpaPagingItemReader<MyEntity> reader(
+        @Value("#{stepExecutionContext['startId']}") long startId,
+        @Value("#{stepExecutionContext['endId']}") long endId
+    ) {
+        return new JpaPagingItemReaderBuilder<MyEntity>()
+            .name("reader")
+            .entityManagerFactory(emf)
+            .queryString("SELECT e FROM MyEntity e WHERE e.active = true AND e.id BETWEEN :start AND :end")
+            .parameterValues(Map.of("start", startId, "end", endId))
+            .pageSize(CHUNK_SIZE)
+            .build();
+    }
+
+    @Bean
+    public ItemProcessor<MyEntity, MyEntity> processor() {
+        return entity -> {
+            boolean ok = entity.getSomeField() != null;
+            entity.setStatus(ok ? "PASS" : "FAIL");
+            return entity;
+        };
+    }
+
+    @Bean
+    @StepScope
+    public ItemWriter<MyEntity> writer() {
+        return items -> repo.saveAll(items);
+    }
+
+    @Bean
+    public Step workerStep() {
+        return steps.get("workerStep")
+            .<MyEntity, MyEntity>chunk(CHUNK_SIZE)
+            .reader(reader(0,0))  // placeholder; real values are injected
+            .processor(processor())
+            .writer(writer())
+            .transactionManager(new JpaTransactionManager(emf))
+            .build();
+    }
+
+    @Bean
+    public Step masterStep(TaskExecutor executor) {
+        return steps.get("masterStep")
+            .partitioner(workerStep().getName(), partitioner)
+            .step(workerStep())
+            .taskExecutor(executor)
+            .gridSize(GRID_SIZE)
+            .build();
+    }
+
+    @Bean
+    public Job job() {
+        return jobs.get("partitionJob")
+            .start(masterStep(taskExecutor()))
+            .build();
+    }
+
+    @Bean
+    public TaskExecutor taskExecutor() {
+        ThreadPoolTaskExecutor exec = new ThreadPoolTaskExecutor();
+        exec.setCorePoolSize(GRID_SIZE);
+        exec.setMaxPoolSize(GRID_SIZE);
+        exec.initialize();
+        return exec;
+    }
+}
+
