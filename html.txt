@@ -44,3 +44,18 @@ public class ActiveRecordPartitioner implements Partitioner {
         return partitions;
     }
 }
+
+
+
+
+public interface MyEntityRepository extends JpaRepository<MyEntity, Long> {
+
+    @Query("SELECT COUNT(e) FROM MyEntity e WHERE e.active = true")
+    long countActive();
+
+    @Query(value = "SELECT MIN(id) FROM (SELECT id FROM my_entity WHERE active = true ORDER BY id LIMIT :limit OFFSET :offset) sub", nativeQuery = true)
+    Long findMinIdByActiveWithOffsetLimit(@Param("offset") long offset, @Param("limit") long limit);
+
+    @Query(value = "SELECT MAX(id) FROM (SELECT id FROM my_entity WHERE active = true ORDER BY id LIMIT :limit OFFSET :offset) sub", nativeQuery = true)
+    Long findMaxIdByActiveWithOffsetLimit(@Param("offset") long offset, @Param("limit") long limit);
+}
