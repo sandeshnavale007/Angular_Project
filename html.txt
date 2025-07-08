@@ -120,3 +120,42 @@ public class ActiveRecordPartitioner implements Partitioner {
         return partitions;
     }
 }
+
+
+
+public class DbRangePartitioner implements Partitioner {
+
+    private JdbcTemplate jdbcTemplate;
+    private int gridSize;
+
+    public DbRangePartitioner(JdbcTemplate jdbcTemplate, int gridSize) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.gridSize = gridSize;
+    }
+
+    @Override
+    public Map<String, ExecutionContext> partition(int gridSize) {
+        Map<String, ExecutionContext> partitions = new HashMap<>();
+
+        String sql = "WITH numbered_ids AS ( " +
+                     "  SELECT id, NTILE(?) OVER (ORDER BY id) AS partition_num FROM your_table " +
+                     ") " +
+                     "SELECT partition_num, MIN(id) AS min_id, MAX(id) AS max_id " +
+                     "FROM numbered_ids " +
+                     "GROUP BY partition_num " +
+                     "ORDER BY partition_num";
+
+        List<Map<String, Object>> results = jdbcTemplate.queryForList(sql, gridSize);
+
+        for (Map<String, Object> row : results) {
+            ExecutionContext context = new ExecutionContext();
+            context.putInt("minValue", (Integer)row.get("min_id"));
+            context.putInt("maxValue", (Integer)row.get("max_id"));
+            String partitionName = "partition" + row.get("partition_num");
+
+            partitions.put(partitionName, context);
+        }
+
+        return partitions;
+    }
+}
