@@ -59,3 +59,64 @@ public interface MyEntityRepository extends JpaRepository<MyEntity, Long> {
     @Query(value = "SELECT MAX(id) FROM (SELECT id FROM my_entity WHERE active = true ORDER BY id LIMIT :limit OFFSET :offset) sub", nativeQuery = true)
     Long findMaxIdByActiveWithOffsetLimit(@Param("offset") long offset, @Param("limit") long limit);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+public interface MyEntityRepository extends JpaRepository<MyEntity, Long> {
+
+    @Query("SELECT COUNT(e) FROM MyEntity e WHERE e.active = true")
+    long countActive();
+
+    @Query("SELECT e.id FROM MyEntity e WHERE e.active = true ORDER BY e.id")
+    List<Long> findActiveIdsWithOffsetLimit(long offset, long limit);
+}
+
+
+
+
+
+@Component
+@RequiredArgsConstructor
+public class ActiveRecordPartitioner implements Partitioner {
+
+    private final MyEntityRepository repo;
+
+    @Override
+    public Map<String, ExecutionContext> partition(int gridSize) {
+        long totalActive = repo.countActive();
+        long chunkSize = totalActive / gridSize;
+        long remainder = totalActive % gridSize;
+
+        Map<String, ExecutionContext> partitions = new HashMap<>();
+        long offset = 0;
+
+        for (int i = 0; i < gridSize; i++) {
+            long limit = chunkSize + (i < remainder ? 1 : 0);
+            List<Long> activeIds = repo.findActiveIdsWithOffsetLimit(offset, limit);
+
+            if (!activeIds.isEmpty()) {
+                Long minId = activeIds.get(0);
+                Long maxId = activeIds.get(activeIds.size() - 1);
+
+                ExecutionContext context = new ExecutionContext();
+                context.putLong("minId", minId);
+                context.putLong("maxId", maxId);
+                partitions.put("partition" + i, context);
+            }
+
+            offset += limit;
+        }
+
+        return partitions;
+    }
+}
