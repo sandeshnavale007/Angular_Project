@@ -159,3 +159,39 @@ public class DbRangePartitioner implements Partitioner {
         return partitions;
     }
 }
+
+
+
+
+
+public Map<String, ExecutionContext> partition(int gridSize) {
+    Map<String, ExecutionContext> partitions = new HashMap<>();
+
+    // Get total count of records
+    Integer totalCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM your_table", Integer.class);
+    int partitionSize = (int) Math.ceil((double) totalCount / gridSize);
+
+    for (int i = 0; i < gridSize; i++) {
+        int offset = i * partitionSize;
+        int limit = partitionSize;
+
+        // Query min id for this partition
+        Integer minId = jdbcTemplate.queryForObject(
+            "SELECT MIN(id) FROM (SELECT id FROM your_table ORDER BY id LIMIT ? OFFSET ?) sub",
+            Integer.class, limit, offset);
+
+        // Query max id for this partition
+        Integer maxId = jdbcTemplate.queryForObject(
+            "SELECT MAX(id) FROM (SELECT id FROM your_table ORDER BY id LIMIT ? OFFSET ?) sub",
+            Integer.class, limit, offset);
+
+        if (minId != null && maxId != null) {
+            ExecutionContext context = new ExecutionContext();
+            context.putInt("minValue", minId);
+            context.putInt("maxValue", maxId);
+            partitions.put("partition" + i, context);
+        }
+    }
+
+    return partitions;
+}
