@@ -168,3 +168,78 @@
 
 </body>
 </html>
+@Configuration
+@EnableBatchProcessing
+public class SnowparkBatchJobConfig {
+
+    private final JobBuilderFactory jobBuilderFactory;
+    private final StepBuilderFactory stepBuilderFactory;
+
+    public SnowparkBatchJobConfig(JobBuilderFactory jobBuilderFactory,
+                                   StepBuilderFactory stepBuilderFactory) {
+        this.jobBuilderFactory = jobBuilderFactory;
+        this.stepBuilderFactory = stepBuilderFactory;
+    }
+
+    @Bean
+    public Job snowparkJob() {
+        return jobBuilderFactory.get("snowparkJob")
+                .start(snowparkStep())
+                .build();
+    }
+
+    @Bean
+    public Step snowparkStep() {
+        return stepBuilderFactory.get("snowparkStep")
+                .<Row, Row>chunk(100)
+                .reader(snowparkItemReader())
+                .writer(items -> {
+                    // Replace with your own logic
+                    for (Row row : items) {
+                        System.out.println("Received: " + row);
+                    }
+                })
+                .build();
+    }
+
+    @Bean
+    public ItemReader<Row> snowparkItemReader() {
+        return new ItemReader<>() {
+            private Session session;
+            private int offset = 0;
+            private final int pageSize = 100;
+            private List<Row> currentBatch = Collections.emptyList();
+            private int indexInBatch = 0;
+
+            {
+                // Snowpark Session Setup
+                Map<String, String> configs = new HashMap<>();
+                configs.put("URL", "https://<your_account>.snowflakecomputing.com");
+                configs.put("USER", "<your_user>");
+                configs.put("PASSWORD", "<your_password>");
+                configs.put("ROLE", "<your_role>");
+                configs.put("WAREHOUSE", "<your_warehouse>");
+                configs.put("DB", "<your_database>");
+                configs.put("SCHEMA", "<your_schema>");
+
+                session = Session.builder().configs(configs).create();
+            }
+
+            @Override
+            public Row read() throws Exception {
+                if (indexInBatch >= currentBatch.size()) {
+                    // Fetch next page
+                    currentBatch = session.sql("SELECT * FROM YOUR_TABLE ORDER BY ID LIMIT " + pageSize + " OFFSET " + offset)
+                            .collectAsList();
+                    offset += pageSize;
+                    indexInBatch = 0;
+
+                    if (currentBatch.isEmpty()) {
+                        return null; // No more data
+                    }
+                }
+                return currentBatch.get(indexInBatch++);
+            }
+        };
+    }
+}
